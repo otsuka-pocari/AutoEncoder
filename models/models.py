@@ -1,8 +1,8 @@
 import torch
-# from torch import Module
 import torch.nn as nn
 import torch.nn.functional as F
 
+# 3D CNN分類モデル
 class CNN(nn.Module):
     def __init__(self):
         super().__init__()
@@ -35,3 +35,35 @@ class CNN(nn.Module):
         x = self.dropout(x)
         x = self.fc2(x)
         return x
+
+
+# CNNベースAutoEncoder定義
+class CNNAutoEncoder(nn.Module):
+    def __init__(self, latent_dim):
+        super(CNNAutoEncoder, self).__init__()
+
+        # Encoder
+        self.encoder = nn.Sequential(
+            nn.Conv2d(1, 16, kernel_size=3, stride=2, padding=1),  # 28x28 → 14x14
+            nn.ReLU(),
+            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1),  # 14x14 → 7x7
+            nn.ReLU(),
+            nn.Flatten(),
+            nn.Linear(32 * 7 * 7, latent_dim)
+        )
+
+        # Decoder
+        self.decoder = nn.Sequential(
+            nn.Linear(latent_dim, 32 * 7 * 7),
+            nn.ReLU(),
+            nn.Unflatten(1, (32, 7, 7)),
+            nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2, padding=1, output_padding=1),  # 7x7 → 14x14
+            nn.ReLU(),
+            nn.ConvTranspose2d(16, 1, kernel_size=3, stride=2, padding=1, output_padding=1),  # 14x14 → 28x28
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        z = self.encoder(x)   # 潜在表現
+        x_recon = self.decoder(z)  # 再構成画像
+        return x_recon, z
