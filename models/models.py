@@ -38,32 +38,46 @@ class CNN(nn.Module):
 
 
 # CNNベースAutoEncoder定義
-class CNNAutoEncoder(nn.Module):
-    def __init__(self, latent_dim):
-        super(CNNAutoEncoder, self).__init__()
-
+class CNNAutoEncoder3D(nn.Module):
+    def __init__(self, latent_dim=64):
+        super().__init__()
         # Encoder
         self.encoder = nn.Sequential(
-            nn.Conv2d(1, 16, kernel_size=3, stride=2, padding=1),  # 28x28 → 14x14
-            nn.ReLU(),
-            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1),  # 14x14 → 7x7
-            nn.ReLU(),
-            nn.Flatten(),
-            nn.Linear(32 * 7 * 7, latent_dim)
+            nn.Conv3d(1, 16, 3, stride=2, padding=1),  # 80->40,112->56,80->40
+            nn.ReLU(True),
+            nn.Conv3d(16, 32, 3, stride=2, padding=1), # 40->20,56->28,40->20
+            nn.ReLU(True),
+            nn.Conv3d(32, 64, 3, stride=2, padding=1), # 20->10,28->14,20->10
+            nn.ReLU(True)
         )
 
+        # Flatten
+        self.flatten_dim = 64*10*14*10
+        self.fc1 = nn.Linear(self.flatten_dim, latent_dim)
+
         # Decoder
+        self.fc2 = nn.Linear(latent_dim, self.flatten_dim)
         self.decoder = nn.Sequential(
-            nn.Linear(latent_dim, 32 * 7 * 7),
-            nn.ReLU(),
-            nn.Unflatten(1, (32, 7, 7)),
-            nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2, padding=1, output_padding=1),  # 7x7 → 14x14
-            nn.ReLU(),
-            nn.ConvTranspose2d(16, 1, kernel_size=3, stride=2, padding=1, output_padding=1),  # 14x14 → 28x28
+            nn.ConvTranspose3d(64, 32, 3, stride=2, padding=1, output_padding=(0,0,0)),  # 10->20,14->28,10->20
+            nn.ReLU(True),
+            nn.ConvTranspose3d(32, 16, 3, stride=2, padding=1, output_padding=(0,0,0)),  # 20->40,28->56,20->40
+            nn.ReLU(True),
+            nn.ConvTranspose3d(16, 1, 3, stride=2, padding=1, output_padding=(0,0,0)),   # 40->80,56->112,40->80
             nn.Sigmoid()
         )
 
+    def encode(self, x):
+        x = self.encoder(x)
+        x = x.view(x.size(0), -1)
+        return self.fc1(x)
+
+    def decode(self, z):
+        x = self.fc2(z)
+        x = x.view(x.size(0), 64, 10, 14, 10)
+        return self.decoder(x)
+
     def forward(self, x):
-        z = self.encoder(x)   # 潜在表現
-        x_recon = self.decoder(z)  # 再構成画像
-        return x_recon, z
+        z = self.encode(x)
+        return self.decode(z)
+
+
