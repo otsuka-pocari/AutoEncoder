@@ -2,38 +2,37 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# 3D CNN分類モデル
-class CNN(nn.Module):
-    def __init__(self):
+class ShallowCNNAutoEncoder3D(nn.Module):
+    def __init__(self, latent_dim=32):
         super().__init__()
-        self.pool = nn.AvgPool3d(2, 2)
-        self.conv1 = nn.Conv3d(1, 3, 3, padding=1)
-        self.conv2 = nn.Conv3d(3, 3, 3, padding=1)
-        self.conv3 = nn.Conv3d(3, 32, 3, padding=1)
-        self.conv4 = nn.Conv3d(32, 64, 3, padding=1)
-        self.fc1 = nn.Linear(10 * 14 * 10 * 64, 512)
-        self.fc2 = nn.Linear(512, 2)
+        # Encoder (層を浅く: Conv3dを2層だけ)
+        self.encoder = nn.Sequential(
+            nn.Conv3d(1, 16, 3, stride=2, padding=1),  # (B,16,D/2,H/2,W/2)
+            nn.ReLU(True),
+            nn.Conv3d(16, 32, 3, stride=2, padding=1), # (B,32,D/4,H/4,W/4)
+            nn.ReLU(True),
+        )
 
-        self.dropout = nn.Dropout(p=0.5)
-        self.batchnorm3d1 = nn.BatchNorm3d(3)
-        self.batchnorm3d12 = nn.BatchNorm3d(3)
-        self.batchnorm3d2 = nn.BatchNorm3d(32)
-        self.batchnorm3d3 = nn.BatchNorm3d(64)
-        self.batchnorm1 = nn.BatchNorm1d(512)
+        # flatten size (例: 入力が (B,1,80,112,80) の場合 → (B,32,20,28,20))
+        self.fc_mu = nn.Linear(32*20*28*20, latent_dim)
+        self.fc_decode = nn.Linear(latent_dim, 32*20*28*20)
+
+        # Decoder (層を浅く: ConvTranspose3dを2層だけ)
+        self.decoder = nn.Sequential(
+            nn.ConvTranspose3d(32, 16, 3, stride=2, padding=1, output_padding=1),
+            nn.ReLU(True),
+            nn.ConvTranspose3d(16, 1, 3, stride=2, padding=1, output_padding=1),
+            nn.Sigmoid()
+        )
 
     def forward(self, x):
-        x = self.pool(x)
-        x = F.relu(self.batchnorm3d1(self.conv1(x)))
-        x = F.relu(self.batchnorm3d12(self.conv2(x)))
-        x = self.pool(x)
-        x = F.relu(self.batchnorm3d2(self.conv3(x)))
-        x = F.relu(self.batchnorm3d3(self.conv4(x)))
-        x = self.pool(x)
-        x = x.view(-1, 10 * 14 * 10 * 64)
-        x = self.dropout(x)
-        x = F.relu(self.batchnorm1(self.fc1(x)))
-        x = self.dropout(x)
-        x = self.fc2(x)
+        batch_size = x.size(0)
+        x = self.encoder(x)
+        x = x.view(batch_size, -1)
+        z = self.fc_mu(x)
+        x = self.fc_decode(z)
+        x = x.view(batch_size, 32, 20, 28, 20)  # reshape back
+        x = self.decoder(x)
         return x
 
 class CNNAutoEncoder3D(nn.Module):

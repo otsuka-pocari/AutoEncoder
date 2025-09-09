@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 
 import datasets.dataset as dataset
 from datasets.load_adni import load_adni2
-from models.models import CNN, CNNAutoEncoder3D
+from models.models import ShallowCNNAutoEncoder3D, CNNAutoEncoder3D, DeepCNNAutoEncoder3D
 from utils.data_class import BrainDataset
 import torchio as tio
 from tqdm import tqdm
@@ -76,7 +76,7 @@ train_dataloader = DataLoader(train_set, batch_size=16, shuffle=True)
 val_dataloader = DataLoader(val_set, batch_size=16, shuffle=False)
 
 # output dir
-os.makedirs('reconstructed_image_CNN_100epoch', exist_ok=True)
+os.makedirs('reconstructed_image_ShallowCNN_100epoch', exist_ok=True)
 
 # device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -91,7 +91,7 @@ reconstruction_errors = []
 for latent_dim in latent_dims:
     print(f"\n=== Latent Dimension: {latent_dim} ===")
 
-    model = CNNAutoEncoder3D(latent_dim).to(device)
+    model = ShallowCNNAutoEncoder3D(latent_dim).to(device)
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
     criterion = nn.MSELoss()
 
@@ -139,7 +139,7 @@ for latent_dim in latent_dims:
         axes[1, i].axis('off')
         axes[1, i].set_title("Reconstructed", fontsize=8)
     plt.tight_layout()
-    plt.savefig(f'reconstructed_image_CNN_100epoch/reconstructed_grid_latent_{latent_dim}.png')
+    plt.savefig(f'reconstructed_image_ShallowCNN_100epoch/reconstructed_grid_latent_{latent_dim}.png')
     plt.close()
 
 # plot reconstruction error
@@ -149,7 +149,7 @@ plt.title("Latent Dimension vs Reconstruction Error (3D CNN AE)")
 plt.xlabel("Latent Dimension")
 plt.ylabel("Reconstruction Error (MSE)")
 plt.grid(True)
-plt.savefig("reconstructed_image_CNN_100epoch/reconstruction_error_plot.png")
+plt.savefig("reconstructed_image_ShallowCNN_100epoch/reconstruction_error_plot.png")
 plt.close()
 
 print("\n✅ Done: Reconstruction images and error plot saved.")
