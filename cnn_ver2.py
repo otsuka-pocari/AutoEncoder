@@ -102,7 +102,6 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # latent dimensions to test
 latent_dims = [2, 8, 16, 32, 64, 128, 256]
-reconstruction_errors_val = []
 reconstruction_errors_test = []
 
 # ===================================
@@ -115,9 +114,12 @@ for latent_dim in latent_dims:
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
     criterion = nn.MSELoss()
 
+    best_val_loss = float("inf")
+    best_model_state = None
+
     # training
-    model.train()
     for epoch in range(100):
+        model.train()
         total_loss = 0
         for x, _ in train_dataloader:
             x = x.to(device)
@@ -127,24 +129,33 @@ for latent_dim in latent_dims:
             loss.backward()
             optimizer.step()
             total_loss += loss.item()
-        print(f"Epoch {epoch+1}, Train Loss: {total_loss/len(train_dataloader):.4f}")
+        avg_train_loss = total_loss / len(train_dataloader)
 
-    # validation loss
-    model.eval()
-    total_loss = 0
-    count = 0
-    with torch.no_grad():
-        for x, _ in val_dataloader:
-            x = x.to(device)
-            x_hat = model(x)
-            loss = criterion(x_hat, x)
-            total_loss += loss.item() * x.size(0)
-            count += x.size(0)
-    avg_loss_val = total_loss / count
-    reconstruction_errors_val.append(avg_loss_val)
-    print(f"Validation Reconstruction Error (MSE): {avg_loss_val:.6f}")
+        # validation
+        model.eval()
+        total_loss = 0
+        count = 0
+        with torch.no_grad():
+            for x, _ in val_dataloader:
+                x = x.to(device)
+                x_hat = model(x)
+                loss = criterion(x_hat, x)
+                total_loss += loss.item() * x.size(0)
+                count += x.size(0)
+        avg_val_loss = total_loss / count
+
+        print(f"Epoch {epoch+1}, Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}")
+
+        # モデル保存（valが改善したときだけ）
+        if avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss
+            best_model_state = model.state_dict()
+
+    # best modelで評価
+    model.load_state_dict(best_model_state)
 
     # test loss
+    model.eval()
     total_loss = 0
     count = 0
     with torch.no_grad():
@@ -158,8 +169,8 @@ for latent_dim in latent_dims:
     reconstruction_errors_test.append(avg_loss_test)
     print(f"Test Reconstruction Error (MSE): {avg_loss_test:.6f}")
 
-    # save reconstruction images (from validation set)
-    test_imgs = next(iter(val_dataloader))[0][:8].to(device)
+    # save reconstruction images (from test set)
+    test_imgs = next(iter(test_dataloader))[0][:8].to(device)
     with torch.no_grad():
         reconstructed = model(test_imgs)
 
@@ -176,16 +187,15 @@ for latent_dim in latent_dims:
     plt.savefig(f'reconstructed_image_ver2_DeepCNN_100epoch/reconstructed_grid_latent_{latent_dim}.png')
     plt.close()
 
-# plot reconstruction error (val + test)
+# plot reconstruction error (test only)
 plt.figure(figsize=(8, 5))
-plt.plot(latent_dims, reconstruction_errors_val, marker='o', linestyle='-', label="Validation")
-plt.plot(latent_dims, reconstruction_errors_test, marker='s', linestyle='--', label="Test")
-plt.title("Latent Dimension vs Reconstruction Error (3D CNN AE)")
+plt.plot(latent_dims, reconstruction_errors_test, marker='o', linestyle='-', label="Test")
+plt.title("Latent Dimension vs Reconstruction Error (Test Only)")
 plt.xlabel("Latent Dimension")
 plt.ylabel("Reconstruction Error (MSE)")
 plt.legend()
 plt.grid(True)
-plt.savefig("reconstructed_image_ver2_DeepCNN_100epoch/reconstruction_error_plot.png")
+plt.savefig("reconstructed_image_ver2_DeepCNN_100epoch/reconstruction_error_plot_test_only.png")
 plt.close()
 
-print("\n✅ Done: Reconstruction images and error plot saved.")
+print("\n✅ Done: Reconstruction images and test-only error plot saved.")
