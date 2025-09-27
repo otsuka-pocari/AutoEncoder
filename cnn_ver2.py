@@ -131,7 +131,7 @@ for latent_dim in latent_dims:
             total_loss += loss.item()
         avg_train_loss = total_loss / len(train_dataloader)
 
-        # validation
+        # validation6s
         model.eval()
         total_loss = 0
         count = 0
