@@ -2,39 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class ShallowCNNAutoEncoder3D(nn.Module):
-    def __init__(self, latent_dim=32):
-        super().__init__()
-        # Encoder (層を浅く: Conv3dを2層だけ)
-        self.encoder = nn.Sequential(
-            nn.Conv3d(1, 16, 3, stride=2, padding=1),  # (B,16,D/2,H/2,W/2)
-            nn.ReLU(True),
-            nn.Conv3d(16, 32, 3, stride=2, padding=1), # (B,32,D/4,H/4,W/4)
-            nn.ReLU(True),
-        )
-
-        # flatten size (例: 入力が (B,1,80,112,80) の場合 → (B,32,20,28,20))
-        self.fc_mu = nn.Linear(32*20*28*20, latent_dim)
-        self.fc_decode = nn.Linear(latent_dim, 32*20*28*20)
-
-        # Decoder (層を浅く: ConvTranspose3dを2層だけ)
-        self.decoder = nn.Sequential(
-            nn.ConvTranspose3d(32, 16, 3, stride=2, padding=1, output_padding=1),
-            nn.ReLU(True),
-            nn.ConvTranspose3d(16, 1, 3, stride=2, padding=1, output_padding=1),
-            nn.Sigmoid()
-        )
-
-    def forward(self, x):
-        batch_size = x.size(0)
-        x = self.encoder(x)
-        x = x.view(batch_size, -1)
-        z = self.fc_mu(x)
-        x = self.fc_decode(z)
-        x = x.view(batch_size, 32, 20, 28, 20)  # reshape back
-        x = self.decoder(x)
-        return x
-
 class CNNAutoEncoder3D(nn.Module):
     def __init__(self, latent_dim=32):
         super().__init__()
