@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 
 import datasets.dataset as dataset
 from datasets.load_adni import load_adni2
-from models.models import ShallowCNNAutoEncoder3D, CNNAutoEncoder3D, DeepCNNAutoEncoder3D
+from models.models import CNNAutoEncoder3D, DeepCNNAutoEncoder3D
 from utils.data_class import BrainDataset
 import torchio as tio
 from tqdm import tqdm
