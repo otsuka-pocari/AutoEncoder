@@ -6,6 +6,10 @@ from torch.utils.data import DataLoader, random_split, TensorDataset
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import accuracy_score
 import numpy as np
+from tqdm import tqdm
+
+# ADNI2データ読み込み用
+from datasets.load_adni import load_adni2
 
 # -----------------------------
 # 1️⃣ AutoEncoder 定義
@@ -14,16 +18,15 @@ class CNNAutoEncoder3D(nn.Module):
     def __init__(self, latent_dim=32):
         super().__init__()
         self.encoder = nn.Sequential(
-            nn.Conv3d(1, 16, 3, stride=2, padding=1), 
+            nn.Conv3d(1, 16, 3, stride=2, padding=1),
             nn.ReLU(True),
             nn.Conv3d(16, 32, 3, stride=2, padding=1),
             nn.ReLU(True),
             nn.Conv3d(32, 64, 3, stride=2, padding=1),
             nn.ReLU(True),
         )
-        self.fc_mu = nn.Linear(64 * 10 * 10 * 10, latent_dim)
-        self.fc_decode = nn.Linear(latent_dim, 64 * 10 * 10 * 10)
-
+        self.fc_mu = nn.Linear(64 * 10 * 14 * 10, latent_dim)
+        self.fc_decode = nn.Linear(latent_dim, 64 * 10 * 14 * 10)
         self.decoder = nn.Sequential(
             nn.ConvTranspose3d(64, 32, 3, stride=2, padding=1, output_padding=1),
             nn.ReLU(True),
@@ -39,26 +42,40 @@ class CNNAutoEncoder3D(nn.Module):
         x = x.view(batch_size, -1)
         z = self.fc_mu(x)
         x = self.fc_decode(z)
-        x = x.view(batch_size, 64, 10, 10, 10)
+        x = x.view(batch_size, 64, 10, 14, 10)
         x = self.decoder(x)
-        return x, z  # zを返すようにする（潜在表現）
+        return x, z
 
 
 # -----------------------------
-# 2️⃣ データ作成（仮データ）
+# 2️⃣ ADNI2データ読み込み
 # -----------------------------
-# 例: 100サンプル, 各サンプルは(1,80,80,80)
-# クラスは 0=健常, 1=AD
-X = torch.randn(100, 1, 80, 80, 80)
-y = torch.cat([torch.zeros(50), torch.ones(50)])  # 50:50クラス分布
+CLASS_MAP = {"CN": 0, "AD": 1}
+
+print("Loading ADNI2 dataset ...")
+dataset_adni = load_adni2(classes=["CN", "AD"], size="half", unique=True, mni=False, strength=["3.0"])
+print("Loaded dataset size:", len(dataset_adni))
+
+# voxelとlabel抽出
+voxels = np.zeros((len(dataset_adni), 1, 80, 112, 80))
+labels = np.zeros(len(dataset_adni))
+for i in tqdm(range(len(dataset_adni))):
+    voxels[i, 0] = dataset_adni[i]["voxel"]
+    labels[i] = CLASS_MAP[dataset_adni[i]["class"]]
+
+# torch.Tensorへ変換
+X = torch.tensor(voxels, dtype=torch.float32)
+y = torch.tensor(labels, dtype=torch.long)
 
 dataset = TensorDataset(X, y)
+
+# train/val分割（例: 80/20）
 train_size = int(0.8 * len(dataset))
 val_size = len(dataset) - train_size
 train_set, val_set = random_split(dataset, [train_size, val_size])
+
 train_loader = DataLoader(train_set, batch_size=4, shuffle=True)
 val_loader = DataLoader(val_set, batch_size=4, shuffle=False)
-
 
 # -----------------------------
 # 3️⃣ 学習とモデル保存
@@ -71,7 +88,7 @@ optimizer = optim.Adam(model.parameters(), lr=1e-3)
 best_val_loss = float("inf")
 os.makedirs("models", exist_ok=True)
 
-for epoch in range(10):  # 学習10エポック（例）
+for epoch in range(10):  # 例として10エポック
     model.train()
     train_loss = 0
     for x_batch, _ in train_loader:
@@ -122,8 +139,8 @@ with torch.no_grad():
 # 5️⃣ KNNで類似症例探索
 # -----------------------------
 knn = KNeighborsClassifier(n_neighbors=5)
-train_z, test_z = all_z[:80], all_z[80:]
-train_y, test_y = all_y[:80], all_y[80:]
+train_z, test_z = all_z[:int(0.8 * len(all_z))], all_z[int(0.8 * len(all_z)):]
+train_y, test_y = all_y[:int(0.8 * len(all_y))], all_y[int(0.8 * len(all_y)):]
 
 knn.fit(train_z, train_y)
 pred_y = knn.predict(test_z)

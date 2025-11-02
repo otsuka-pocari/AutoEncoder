@@ -91,7 +91,7 @@ test_loader = DataLoader(test_set, batch_size=16, shuffle=False)
 # Training setup
 # ===================================
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-latent_dim = 64  # 固定して良いが、後で変えてもOK
+latent_dim = 64 # 固定して良いが、後で変えてもOK
 model = DeepCNNAutoEncoder3D(latent_dim).to(device)
 criterion = nn.MSELoss()
 optimizer = optim.Adam(model.parameters(), lr=1e-3)
