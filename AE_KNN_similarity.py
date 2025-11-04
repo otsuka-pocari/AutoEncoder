@@ -74,6 +74,9 @@ train_size = int(0.8 * len(dataset))
 val_size = len(dataset) - train_size
 train_set, val_set = random_split(dataset, [train_size, val_size])
 
+print("Train set size:", len(train_set))
+print("Validation set size:", len(val_set))
+
 train_loader = DataLoader(train_set, batch_size=4, shuffle=True)
 val_loader = DataLoader(val_set, batch_size=4, shuffle=False)
 
