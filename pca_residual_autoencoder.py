@@ -17,7 +17,7 @@ from datasets.load_adni import load_adni2
 # 1️⃣ AutoEncoder定義（既存と同じ）
 # =====================================
 class CNNAutoEncoder3D(nn.Module):
-    def __init__(self, latent_dim=16):  # PCAを使うのでlatent_dimを小さくしてOK
+    def __init__(self, latent_dim=32): 
         super().__init__()
         self.encoder = nn.Sequential(
             nn.Conv3d(1, 16, 3, stride=2, padding=1),
