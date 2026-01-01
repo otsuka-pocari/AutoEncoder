@@ -1,7 +1,8 @@
 ############################################################
 # latent_dim を複数試して結果を表で比較
-# （再構成誤差なし：latent feature のみ）
-# + confusion matrix を保存（白縁付き数字）
+# + クラス割合確認
+# + CN / AD クラス別 Accuracy・F1
+# + Confusion Matrix（白縁付き数字で保存）
 ############################################################
 
 import os
@@ -13,9 +14,9 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
+from tqdm import tqdm
 import matplotlib.pyplot as plt
 import matplotlib.patheffects as pe
-from tqdm import tqdm
 
 # -------------------------
 # GPU設定
@@ -53,15 +54,29 @@ for i in range(len(X_all)):
 print("X_all:", X_all.shape, "y_all:", y_all.shape)
 
 # -------------------------
+# クラス割合確認
+# -------------------------
+def show_ratio(y, title):
+    labels, counts = np.unique(y, return_counts=True)
+    print(f"\n=== {title} ===")
+    for l, c in zip(labels, counts):
+        name = "CN" if l == 0 else "AD"
+        print(f"{name}: {c} ({c/len(y)*100:.2f}%)")
+
+show_ratio(y_all, "All data")
+
+# -------------------------
 # train / test split
 # -------------------------
-RANDOM_SEED = 42
 X_train, X_test, y_train, y_test = train_test_split(
     X_all, y_all,
     test_size=0.2,
     stratify=y_all,
-    random_state=RANDOM_SEED
+    random_state=42
 )
+
+show_ratio(y_train, "Train")
+show_ratio(y_test,  "Test")
 
 train_ds = TensorDataset(torch.from_numpy(X_train), torch.from_numpy(y_train))
 test_ds  = TensorDataset(torch.from_numpy(X_test),  torch.from_numpy(y_test))
@@ -109,44 +124,33 @@ class Conv3dAutoEncoder(nn.Module):
             self.add_module("fc_enc", self.fc_enc)
             self.add_module("fc_dec", self.fc_dec)
 
-    def encode(self, x):
-        h = self.enc(x)
-        h = h.view(h.size(0), -1)
-        return self.fc_enc(h)
-
-    def decode(self, z):
-        h = self.fc_dec(z)
-        h = h.view(z.size(0), *self._enc_shape)
-        return self.dec_conv(h)
-
     def forward(self, x):
         if self.fc_enc is None:
             self._init_fc(x[0].cpu().numpy())
-        z = self.encode(x)
-        x_rec = self.decode(z)
+        h = self.enc(x).view(x.size(0), -1)
+        z = self.fc_enc(h)
+        h = self.fc_dec(z).view(z.size(0), *self._enc_shape)
+        x_rec = self.dec_conv(h)
         return x_rec, z
 
 # -------------------------
-# Confusion matrix 保存関数（白縁付き数字）
+# Confusion Matrix 保存（白縁付き数字）
 # -------------------------
 def save_confusion_matrix(cm, classes, title, save_path):
     plt.figure(figsize=(4, 4), dpi=300)
     plt.imshow(cm, cmap="Blues")
-
     plt.title(title, fontsize=12)
-    plt.colorbar(fraction=0.046, pad=0.04)
+    plt.colorbar()
 
-    tick_marks = np.arange(len(classes))
-    plt.xticks(tick_marks, classes, fontsize=11)
-    plt.yticks(tick_marks, classes, fontsize=11)
+    plt.xticks([0, 1], classes)
+    plt.yticks([0, 1], classes)
 
-    for i in range(cm.shape[0]):
-        for j in range(cm.shape[1]):
+    for i in range(2):
+        for j in range(2):
             plt.text(
                 j, i, f"{cm[i, j]}",
                 ha="center", va="center",
-                fontsize=12,
-                fontweight="bold",
+                fontsize=12, fontweight="bold",
                 color="black",
                 path_effects=[
                     pe.Stroke(linewidth=3, foreground="white"),
@@ -154,17 +158,10 @@ def save_confusion_matrix(cm, classes, title, save_path):
                 ]
             )
 
-    plt.ylabel("True label", fontsize=11)
-    plt.xlabel("Predicted label", fontsize=11)
-
-    plt.grid(False)
-    plt.gca().set_xticks(np.arange(-0.5, len(classes), 1), minor=True)
-    plt.gca().set_yticks(np.arange(-0.5, len(classes), 1), minor=True)
-    plt.gca().grid(which="minor", color="gray", linestyle="-", linewidth=0.5)
-    plt.gca().tick_params(which="minor", bottom=False, left=False)
-
+    plt.xlabel("Predicted")
+    plt.ylabel("True")
     plt.tight_layout()
-    plt.savefig(save_path, bbox_inches="tight")
+    plt.savefig(save_path)
     plt.close()
 
 # -------------------------
@@ -175,7 +172,7 @@ def run_experiment(latent_dim, epochs=10, save_dir="confusion_matrices"):
     os.makedirs(save_dir, exist_ok=True)
 
     model = Conv3dAutoEncoder(latent_dim=latent_dim).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-5)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     criterion = nn.MSELoss()
 
     train_loader = DataLoader(train_ds, batch_size=8, shuffle=True)
@@ -183,7 +180,6 @@ def run_experiment(latent_dim, epochs=10, save_dir="confusion_matrices"):
 
     # ---- CAE training ----
     for _ in range(epochs):
-        model.train()
         for xb, _ in train_loader:
             xb = xb.to(device)
             optimizer.zero_grad()
@@ -192,54 +188,51 @@ def run_experiment(latent_dim, epochs=10, save_dir="confusion_matrices"):
             loss.backward()
             optimizer.step()
 
-    # ---- embedding extraction ----
+    # ---- feature extraction ----
     def extract(loader):
-        emb, lbl = [], []
+        emb, re, lbl = [], [], []
         with torch.no_grad():
             for xb, yb in loader:
                 xb = xb.to(device)
-                _, z = model(xb)
+                x_rec, z = model(xb)
+                err = ((x_rec - xb) ** 2).view(xb.size(0), -1).mean(dim=1)
                 emb.append(z.cpu().numpy())
+                re.append(err.cpu().numpy()[:, None])
                 lbl.append(yb.numpy())
-        return np.concatenate(emb), np.concatenate(lbl)
+        return np.concatenate(emb), np.concatenate(re), np.concatenate(lbl)
 
-    Xtr, ytr = extract(train_loader)
-    Xte, yte = extract(test_loader)
+    tr_emb, tr_re, tr_lbl = extract(train_loader)
+    te_emb, te_re, te_lbl = extract(test_loader)
 
-    # ---- standardization ----
+    Xtr = np.concatenate([tr_emb, tr_re], axis=1)
+    Xte = np.concatenate([te_emb, te_re], axis=1)
+
     scaler = StandardScaler()
     Xtr = scaler.fit_transform(Xtr)
     Xte = scaler.transform(Xte)
 
-    # ---- kNN ----
-    knn = KNeighborsClassifier(n_neighbors=5, n_jobs=-1)
-    knn.fit(Xtr, ytr)
+    knn = KNeighborsClassifier(n_neighbors=5)
+    knn.fit(Xtr, tr_lbl)
     pred = knn.predict(Xte)
 
     # ---- metrics ----
-    acc_all = accuracy_score(yte, pred)
-    f1_macro = f1_score(yte, pred, average="macro")
-    f1_each = f1_score(yte, pred, average=None, labels=[0, 1])
+    acc_all = accuracy_score(te_lbl, pred)
+    f1_macro = f1_score(te_lbl, pred, average="macro")
+    f1_each = f1_score(te_lbl, pred, average=None, labels=[0, 1])
 
-    acc_each = []
-    for c in [0, 1]:
-        idx = (yte == c)
-        acc_each.append((pred[idx] == yte[idx]).mean())
+    acc_each = [
+        (pred[te_lbl == c] == c).mean() for c in [0, 1]
+    ]
 
     # ---- confusion matrix ----
-    cm = confusion_matrix(yte, pred, labels=[0, 1])
-    save_path = os.path.join(
-        save_dir, f"confusion_matrix_simple_latent{latent_dim}.png"
-    )
-
+    cm = confusion_matrix(te_lbl, pred, labels=[0, 1])
     save_confusion_matrix(
         cm,
         classes=["CN", "AD"],
         title=f"Confusion Matrix (latent_dim={latent_dim})",
-        save_path=save_path
+        save_path=f"{save_dir}/my_idea_cm_latent{latent_dim}.png"
     )
 
-    print(f"Confusion matrix saved: {save_path}")
     print(
         f"ACC(all)={acc_all:.4f} | Macro-F1={f1_macro:.4f} | "
         f"CN: Acc={acc_each[0]:.4f}, F1={f1_each[0]:.4f} | "
@@ -255,10 +248,10 @@ latent_list = [16, 32, 64, 128, 256]
 results = []
 
 for ld in latent_list:
-    results.append([ld] + list(run_experiment(ld, epochs=10)))
+    results.append([ld] + list(run_experiment(ld)))
 
 # -------------------------
-# 結果表示
+# Summary
 # -------------------------
 print("\n====== Summary ======")
 print("LATENT | Acc(all) | F1(macro) | Acc(CN) | F1(CN) | Acc(AD) | F1(AD)")
