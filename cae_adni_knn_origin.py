@@ -133,7 +133,7 @@ def save_confusion_matrix(cm, classes, title, save_path):
     plt.figure(figsize=(4, 4), dpi=300)
     plt.imshow(cm, cmap="Blues")
 
-    plt.title(title, fontsize=12)
+    #plt.title(title, fontsize=12)
     plt.colorbar(fraction=0.046, pad=0.04)
 
     tick_marks = np.arange(len(classes))

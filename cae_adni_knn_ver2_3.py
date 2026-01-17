@@ -139,7 +139,7 @@ class Conv3dAutoEncoder(nn.Module):
 def save_confusion_matrix(cm, classes, title, save_path):
     plt.figure(figsize=(4, 4), dpi=300)
     plt.imshow(cm, cmap="Blues")
-    plt.title(title, fontsize=12)
+    #plt.title(title, fontsize=12)
     plt.colorbar()
 
     plt.xticks([0, 1], classes)
@@ -157,9 +157,8 @@ def save_confusion_matrix(cm, classes, title, save_path):
                     pe.Normal()
                 ]
             )
-
-    plt.xlabel("Predicted")
-    plt.ylabel("True")
+    plt.ylabel("True label", fontsize=11)
+    plt.xlabel("Predicted label", fontsize=11)
     plt.tight_layout()
     plt.savefig(save_path)
     plt.close()
