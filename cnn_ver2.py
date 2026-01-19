@@ -190,7 +190,7 @@ for latent_dim in latent_dims:
 # plot reconstruction error (test only)
 plt.figure(figsize=(8, 5))
 plt.plot(latent_dims, reconstruction_errors_test, marker='o', linestyle='-', label="Test")
-plt.title("Latent Dimension vs Reconstruction Error (Test Only)")
+#plt.title("Latent Dimension vs Reconstruction Error (Test Only)")
 plt.xlabel("Latent Dimension")
 plt.ylabel("Reconstruction Error (MSE)")
 plt.legend()
